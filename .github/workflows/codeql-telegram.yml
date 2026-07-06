@@ -62,19 +62,22 @@ jobs:
           if [ "$RESULT" = "success" ]; then
             STATUS="✅ CodeQL finalizó correctamente"
           else
-            STATUS="❌ CodeQL encontró un error o falló el análisis"
+            STATUS="❌ CodeQL falló o encontró un problema en el análisis"
           fi
 
-          MESSAGE="$STATUS
+          MESSAGE=$(cat <<EOF
+          $STATUS
 
-Repositorio: $REPOSITORY
-Rama: $BRANCH
-Commit: ${COMMIT:0:7}
-Resultado: $RESULT
+          Repositorio: $REPOSITORY
+          Rama: $BRANCH
+          Commit: ${COMMIT:0:7}
+          Resultado: $RESULT
 
-Ver detalles:
-  $RUN_URL"
-  
-  curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-  -d chat_id="${TELEGRAM_CHAT_ID}" \
-  --data-urlencode text="${MESSAGE}"
+          Ver detalles:
+          $RUN_URL
+          EOF
+          )
+
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${MESSAGE}"
