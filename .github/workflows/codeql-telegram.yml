@@ -24,23 +24,65 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ "java-kotlin", "javascript-typescript" ]
+        include:
+          - language: java-kotlin
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Java
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
           queries: security-extended
 
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
+      - name: Build Java projects manually
+        if: matrix.language == 'java-kotlin'
+        run: |
+          set -e
+
+          echo "Buscando proyectos Java con Maven o Gradle..."
+
+          if find . -name "pom.xml" -not -path "*/target/*" | grep -q .; then
+            echo "Proyectos Maven encontrados."
+
+            while IFS= read -r pom; do
+              dir="$(dirname "$pom")"
+              echo "Compilando proyecto Maven en: $dir"
+              (cd "$dir" && mvn -B clean package -DskipTests -Dmaven.test.skip=true)
+            done < <(find . -name "pom.xml" -not -path "*/target/*")
+
+          elif find . -name "gradlew" | grep -q .; then
+            echo "Proyectos Gradle encontrados."
+
+            while IFS= read -r gradle; do
+              dir="$(dirname "$gradle")"
+              echo "Compilando proyecto Gradle en: $dir"
+              chmod +x "$dir/gradlew"
+              (cd "$dir" && ./gradlew clean build -x test)
+            done < <(find . -name "gradlew")
+
+          else
+            echo "No se encontraron proyectos Java con pom.xml ni gradlew."
+            exit 1
+          fi
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
 
   notify-telegram:
     name: Notify Telegram
