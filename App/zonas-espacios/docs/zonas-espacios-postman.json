@@ -1,0 +1,265 @@
+{
+  "info": {
+    "_postman_id": "zonas-espacios-crud-v1",
+    "name": "zonas-espacios CRUD",
+    "description": "Colección completa para probar el microservicio zonas-espacios.\n\nBase URL: http://localhost:8080\n\nEnums válidos:\n- TipoZona: VIP, VISITANTES, GENERAL, PREFERENCIAL\n- TipoEspacio: AUTO, MOTO, BUSETA, BUS, CAMION\n- EstadoEspacio: DISPONIBLE, OCUPADO, RESERVADO, MANTENIMIENTO",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "zonaId",
+      "value": "",
+      "type": "string",
+      "description": "Pega aquí el UUID de una zona creada"
+    },
+    {
+      "key": "espacioId",
+      "value": "",
+      "type": "string",
+      "description": "Pega aquí el UUID de un espacio creado"
+    }
+  ],
+  "item": [
+    {
+      "name": "🏙️ Zonas",
+      "description": "CRUD completo para la entidad Zona",
+      "item": [
+        {
+          "name": "1. Listar todas las zonas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/zonas",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "zonas"]
+            },
+            "description": "Devuelve todas las zonas registradas con su conteo de espacios disponibles."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Crear zona",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Zona Norte\",\n  \"descripcion\": \"Zona de parqueo al norte del campus\",\n  \"capacidad\": 20,\n  \"tipo\": \"VIP\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/zonas",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "zonas"]
+            },
+            "description": "Crea una nueva zona. El campo 'codigo' se genera automáticamente con el formato ZON-[TIPO]-[NN].\n\nValores válidos para 'tipo': VIP, VISITANTES, GENERAL, PREFERENCIAL\n\nNota: 'nombre' tiene máximo 10 caracteres."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Actualizar zona",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Zona Sur\",\n  \"descripcion\": \"Zona actualizada al sur del campus\",\n  \"capacidad\": 30,\n  \"tipo\": \"GENERAL\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/zonas/{{zonaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "zonas", "{{zonaId}}"]
+            },
+            "description": "Actualiza los datos de una zona existente. Reemplaza {{zonaId}} con el UUID de la zona o coloca el UUID directamente en la URL.\n\nEl código generado (ZON-...) no cambia al actualizar."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Eliminar zona",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/zonas/{{zonaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "zonas", "{{zonaId}}"]
+            },
+            "description": "Elimina una zona por su UUID. Responde 204 No Content si tiene éxito.\n\n⚠️ Al eliminar una zona se eliminan en cascada todos sus espacios (orphanRemoval = true)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🅿️ Espacios",
+      "description": "CRUD completo + consultas especiales para la entidad Espacio",
+      "item": [
+        {
+          "name": "1. Listar todos los espacios",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/espacios",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "espacios"]
+            },
+            "description": "Devuelve todos los espacios registrados con el nombre y UUID de su zona."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Obtener espacio por ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/espacios/{{espacioId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "espacios", "{{espacioId}}"]
+            },
+            "description": "Obtiene un único espacio por su UUID. Lanza error 500 si el ID no existe."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Crear espacio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"descripcion\": \"Espacio para vehículos livianos\",\n  \"tipo\": \"AUTO\",\n  \"idZona\": \"{{zonaId}}\",\n  \"estado\": \"DISPONIBLE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/espacios",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "espacios"]
+            },
+            "description": "Crea un nuevo espacio dentro de una zona. El campo 'nombre' se genera automáticamente con el formato:\n[3 letras zona]-[TIPO]-[num zona]-[num espacio]\nEjemplo: Zon-AUTO-01-001\n\nValores válidos para 'tipo': AUTO, MOTO, BUSETA, BUS, CAMION\nValores válidos para 'estado': DISPONIBLE, OCUPADO, RESERVADO, MANTENIMIENTO\n\n⚠️ El campo 'idZona' debe ser el UUID de una zona existente."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Actualizar espacio",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"descripcion\": \"Espacio actualizado para motos\",\n  \"tipo\": \"MOTO\",\n  \"idZona\": \"{{zonaId}}\",\n  \"estado\": \"OCUPADO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/espacios/{{espacioId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "espacios", "{{espacioId}}"]
+            },
+            "description": "Actualiza el tipo, estado y descripción de un espacio. El nombre generado NO cambia al actualizar."
+          },
+          "response": []
+        },
+        {
+          "name": "5. Eliminar espacio",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/espacios/{{espacioId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "espacios", "{{espacioId}}"]
+            },
+            "description": "Elimina un espacio por su UUID. Responde 204 No Content si tiene éxito."
+          },
+          "response": []
+        },
+        {
+          "name": "6. Filtrar espacios por estado",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/espacios/estado/DISPONIBLE",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "espacios", "estado", "DISPONIBLE"]
+            },
+            "description": "Devuelve todos los espacios con el estado indicado en la URL, sin importar la zona.\n\nValores válidos: DISPONIBLE, OCUPADO, RESERVADO, MANTENIMIENTO\n\nEjemplos de URL:\n- /api/espacios/estado/DISPONIBLE\n- /api/espacios/estado/OCUPADO\n- /api/espacios/estado/MANTENIMIENTO"
+          },
+          "response": []
+        },
+        {
+          "name": "7. Filtrar espacios por zona y estado",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/espacios/zona/{{zonaId}}/estado/DISPONIBLE",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "espacios", "zona", "{{zonaId}}", "estado", "DISPONIBLE"]
+            },
+            "description": "Devuelve los espacios de una zona específica que tienen el estado indicado.\n\nUso: reemplaza {{zonaId}} con el UUID de la zona que deseas consultar.\n\nEjemplo de URL completa:\n/api/espacios/zona/550e8400-e29b-41d4-a716-446655440000/estado/DISPONIBLE"
+          },
+          "response": []
+        },
+        {
+          "name": "8. Estadísticas — conteo por zona",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/espacios/estadisticas/DISPONIBLE",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "espacios", "estadisticas", "DISPONIBLE"]
+            },
+            "description": "Devuelve un mapa JSON con el conteo de espacios de ese estado agrupados por zona.\n\nRespuesta de ejemplo:\n{\n  \"Zona Norte\": 5,\n  \"Zona Sur\": 3,\n  \"Zona VIP\": 1\n}\n\nValores válidos: DISPONIBLE, OCUPADO, RESERVADO, MANTENIMIENTO"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
