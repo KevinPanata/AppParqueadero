@@ -1,5 +1,5 @@
-import { Clasificacion } from "../entities/vehiqlo.entity";
-import { TipoMoto } from "../entities/moto.entity";
+import { Clasificacion } from '../entities/vehiqlo.entity';
+import { TipoMoto } from '../entities/moto.entity';
 
 export class ResponseVehiculo {
   id!: string;

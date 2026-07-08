@@ -38,7 +38,8 @@ class BaseVehiculoDto {
   @MinLength(1, { message: 'El modelo debe tener al menos 1 carácter' })
   @MaxLength(30, { message: 'El modelo debe tener máximo 30 caracteres' })
   @Matches(/^[A-Za-z0-9 áéíóúÁÉÍÓÚñÑ.-]+$/, {
-    message: 'El modelo solo puede contener letras, números, espacios, puntos y guiones',
+    message:
+      'El modelo solo puede contener letras, números, espacios, puntos y guiones',
   })
   modelo!: string;
 

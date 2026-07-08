@@ -69,7 +69,9 @@ export class EventPublisher implements OnModuleInit, OnModuleDestroy {
     }
 
     if (!this.channel) {
-      this.logger.error('No se pudo publicar el evento porque no existe canal RabbitMQ');
+      this.logger.error(
+        'No se pudo publicar el evento porque no existe canal RabbitMQ',
+      );
       return;
     }
 

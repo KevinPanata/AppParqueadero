@@ -81,11 +81,27 @@ export class VehiculosService {
     return saved;
   }
 
-  async findAll(): Promise<Vehiculo[]> {
-    return this.repositoryVehiculo.find();
+  async findAll(auditContext: AuditContext): Promise<Vehiculo[]> {
+    const vehiculos = await this.repositoryVehiculo.find();
+
+    await this.eventPublisher.publish({
+      servicio: 'ms-vehiculos',
+      accion: 'SELECT',
+      entidad: 'VEHICULO',
+      usuario: auditContext.usuario,
+      idPersona: auditContext.idPersona,
+      ip: auditContext.ip,
+      mac: auditContext.mac,
+      datos: {
+        mensaje: 'Consulta general de vehículos',
+        cantidadRegistros: vehiculos.length,
+      },
+    });
+
+    return vehiculos;
   }
 
-  async findOne(id: string): Promise<Vehiculo> {
+  async findOne(id: string, auditContext?: AuditContext): Promise<Vehiculo> {
     const vehiculo = await this.repositoryVehiculo.findOne({
       where: { id },
     });
@@ -94,10 +110,20 @@ export class VehiculosService {
       throw new NotFoundException('No existe un vehículo con ese id');
     }
 
+    if (auditContext) {
+      await this.emitEvent('SELECT', vehiculo, auditContext, {
+        mensaje: 'Consulta de vehículo por ID',
+        idConsultado: id,
+      });
+    }
+
     return vehiculo;
   }
 
-  async findByPlaca(placa: string): Promise<Vehiculo> {
+  async findByPlaca(
+    placa: string,
+    auditContext: AuditContext,
+  ): Promise<Vehiculo> {
     const placaNormalizada = placa.trim().toUpperCase();
 
     const vehiculo = await this.repositoryVehiculo.findOne({
@@ -107,6 +133,11 @@ export class VehiculosService {
     if (!vehiculo) {
       throw new NotFoundException('No existe un vehículo con esa placa');
     }
+
+    await this.emitEvent('SELECT', vehiculo, auditContext, {
+      mensaje: 'Consulta de vehículo por placa',
+      placaConsultada: placaNormalizada,
+    });
 
     return vehiculo;
   }
@@ -144,10 +175,7 @@ export class VehiculosService {
     return updated;
   }
 
-  async remove(
-    id: string,
-    auditContext: AuditContext,
-  ): Promise<void> {
+  async remove(id: string, auditContext: AuditContext): Promise<void> {
     const vehiculo = await this.findOne(id);
 
     await this.repositoryVehiculo.delete(vehiculo.id);

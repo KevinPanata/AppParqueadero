@@ -43,35 +43,37 @@ export class VehiculosController {
     @Body() createVehiculoDto: CreateVehiculoDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    const user = request.user;
-
-    const ip = this.obtenerIp(request);
-    const mac = this.obtenerMac(request);
-
-    return this.vehiculosService.create(createVehiculoDto, {
-      usuario: user?.sub,
-      idPersona: user?.userId,
-      ip,
-      mac,
-    });
+    return this.vehiculosService.create(
+      createVehiculoDto,
+      this.construirAuditContext(request),
+    );
   }
 
   @Get()
   @Roles(Role.ADMIN)
-  findAll() {
-    return this.vehiculosService.findAll();
+  findAll(@Req() request: AuthenticatedRequest) {
+    return this.vehiculosService.findAll(this.construirAuditContext(request));
   }
 
   @Get('placa/:placa')
   @Roles(Role.ADMIN, Role.CLIENTE)
-  findByPlaca(@Param('placa') placa: string) {
-    return this.vehiculosService.findByPlaca(placa);
+  findByPlaca(
+    @Param('placa') placa: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.vehiculosService.findByPlaca(
+      placa,
+      this.construirAuditContext(request),
+    );
   }
 
   @Get(':id')
   @Roles(Role.ADMIN)
-  findOne(@Param('id') id: string) {
-    return this.vehiculosService.findOne(id);
+  findOne(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    return this.vehiculosService.findOne(
+      id,
+      this.construirAuditContext(request),
+    );
   }
 
   @Patch(':id')
@@ -81,36 +83,20 @@ export class VehiculosController {
     @Body() updateVehiculoDto: UpdateVehiculoDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    const user = request.user;
-
-    const ip = this.obtenerIp(request);
-    const mac = this.obtenerMac(request);
-
-    return this.vehiculosService.update(id, updateVehiculoDto, {
-      usuario: user?.sub,
-      idPersona: user?.userId,
-      ip,
-      mac,
-    });
+    return this.vehiculosService.update(
+      id,
+      updateVehiculoDto,
+      this.construirAuditContext(request),
+    );
   }
 
   @Delete(':id')
   @Roles(Role.ADMIN)
-  remove(
-    @Param('id') id: string,
-    @Req() request: AuthenticatedRequest,
-  ) {
-    const user = request.user;
-
-    const ip = this.obtenerIp(request);
-    const mac = this.obtenerMac(request);
-
-    return this.vehiculosService.remove(id, {
-      usuario: user?.sub,
-      idPersona: user?.userId,
-      ip,
-      mac,
-    });
+  remove(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    return this.vehiculosService.remove(
+      id,
+      this.construirAuditContext(request),
+    );
   }
 
   private obtenerIp(request: Request): string {
@@ -121,10 +107,7 @@ export class VehiculosController {
     if (typeof forwardedFor === 'string' && forwardedFor.trim() !== '') {
       ip = forwardedFor.split(',')[0].trim();
     } else {
-      ip =
-        request.ip ||
-        request.socket.remoteAddress ||
-        '127.0.0.1';
+      ip = request.ip || request.socket.remoteAddress || '127.0.0.1';
     }
 
     ip = ip.replace('::ffff:', '');
@@ -173,16 +156,23 @@ export class VehiculosController {
       if (!datosInterfaz) continue;
 
       for (const item of datosInterfaz) {
-        if (
-          item.mac &&
-          item.mac !== '00:00:00:00:00:00' &&
-          !item.internal
-        ) {
+        if (item.mac && item.mac !== '00:00:00:00:00:00' && !item.internal) {
           return item.mac.toUpperCase();
         }
       }
     }
 
     return '00:00:00:00:00:00';
+  }
+
+  private construirAuditContext(request: AuthenticatedRequest) {
+    const user = request.user;
+
+    return {
+      usuario: user?.sub,
+      idPersona: user?.userId,
+      ip: this.obtenerIp(request),
+      mac: this.obtenerMac(request),
+    };
   }
 }
