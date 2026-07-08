@@ -1,5 +1,6 @@
 package ec.edu.espe.zonas.servicios.impl;
 
+import ec.edu.espe.zonas.dto.AuditEvent;
 import ec.edu.espe.zonas.dto.CambiarEstadoEspacioDTO;
 import ec.edu.espe.zonas.dto.EspacioRequestDTO;
 import ec.edu.espe.zonas.entidades.Espacio;
@@ -9,6 +10,7 @@ import ec.edu.espe.zonas.repositorios.EspacioRepositorio;
 import ec.edu.espe.zonas.repositorios.ZonaRepositorio;
 import ec.edu.espe.zonas.response.EspacioResponseDto;
 import ec.edu.espe.zonas.servicios.interfaz.EspacioServicio;
+import ec.edu.espe.zonas.servicios.impl.EventPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,19 +20,56 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
 @Service
 @RequiredArgsConstructor
 public class ServicioEspacio implements EspacioServicio {
 
     private final EspacioRepositorio espacioRepositorio;
     private final ZonaRepositorio zonaRepositorio;
+    private final EventPublisher eventPublisher;
+
+    // Método auxiliar para emitir eventos
+    private void emitEvent(String accion, Espacio espacio, Map<String, Object> datosExtra, String usuario, String ip) {
+        AuditEvent event = AuditEvent.builder()
+                .servicio("ms-zonas-espacios")
+                .accion(accion)
+                .entidad("Espacio")
+                .entidadId(espacio.getId().toString())
+                .datos(Map.of(
+                        "espacio", Map.of(
+                                "id", espacio.getId(),
+                                "nombre", espacio.getNombre(),
+                                "estado", espacio.getEstado().name(),
+                                "zona", espacio.getZona().getNombre()
+                        ),
+                        "extra", datosExtra != null ? datosExtra : Map.of()
+                ))
+                .usuario(usuario != null ? usuario : "sistema")
+                .ip(ip != null ? ip : "0.0.0.0")
+                .build();
+
+        eventPublisher.publishEvent(event);
+    }
 
     @Override
     @Transactional(readOnly = true)
     public List<EspacioResponseDto> obtenerEspacios() {
-        return espacioRepositorio.findByActivoTrue()
-                .stream()
+        List<Espacio> espacios = espacioRepositorio.findByActivoTrue();
+
+        // 📝 Evento de auditoría
+        if (!espacios.isEmpty()) {
+            AuditEvent event = AuditEvent.builder()
+                    .servicio("ms-zonas-espacios")
+                    .accion("READ_ALL")
+                    .entidad("Espacio")
+                    .datos(Map.of("cantidad", espacios.size()))
+                    .usuario("sistema")
+                    .ip("0.0.0.0")
+                    .build();
+            eventPublisher.publishEvent(event);
+        }
+
+        return espacios.stream()
                 .map(this::mapearResponse)
                 .toList();
     }
@@ -39,6 +78,10 @@ public class ServicioEspacio implements EspacioServicio {
     @Transactional(readOnly = true)
     public EspacioResponseDto obtenerEspacio(UUID id) {
         Espacio espacio = buscarEspacioPorId(id);
+
+        // Evento de auditoría
+        emitEvent("READ", espacio, null, null, null);
+
         return mapearResponse(espacio);
     }
 
@@ -63,6 +106,9 @@ public class ServicioEspacio implements EspacioServicio {
 
         Espacio guardado = espacioRepositorio.save(espacio);
 
+        // Evento de auditoría
+        emitEvent("CREATE", guardado, Map.of("zona", zona.getNombre()), null, null);
+
         return mapearResponse(guardado);
     }
 
@@ -80,8 +126,16 @@ public class ServicioEspacio implements EspacioServicio {
         }
 
         Zona nuevaZona = buscarZonaPorId(requestDto.getIdZona());
-
         validarZonaActiva(nuevaZona);
+
+        // Guardar estado anterior
+        Map<String, Object> estadoAnterior = Map.of(
+                "nombre", espacio.getNombre(),
+                "descripcion", espacio.getDescripcion(),
+                "tipo", espacio.getTipo(),
+                "zona", espacio.getZona().getNombre(),
+                "estado", espacio.getEstado().name()
+        );
 
         boolean cambioDeZona = !nuevaZona.getId().equals(espacio.getZona().getId());
 
@@ -91,7 +145,6 @@ public class ServicioEspacio implements EspacioServicio {
             }
 
             validarCapacidadDisponible(nuevaZona);
-
             espacio.setZona(nuevaZona);
             espacio.setNombre(generarNombreEspacio(nuevaZona));
         }
@@ -100,7 +153,19 @@ public class ServicioEspacio implements EspacioServicio {
         espacio.setTipo(requestDto.getTipo());
         espacio.setFechaActualizacion(LocalDateTime.now());
 
-        return mapearResponse(espacioRepositorio.save(espacio));
+        Espacio actualizado = espacioRepositorio.save(espacio);
+
+        // Evento de auditoría
+        emitEvent("UPDATE", actualizado, Map.of(
+                "cambios", Map.of(
+                        "descripcion", requestDto.getDescripcion(),
+                        "tipo", requestDto.getTipo(),
+                        "nuevaZona", nuevaZona.getNombre()
+                ),
+                "estadoAnterior", estadoAnterior
+        ), null, null);
+
+        return mapearResponse(actualizado);
     }
 
     @Override
@@ -111,6 +176,12 @@ public class ServicioEspacio implements EspacioServicio {
         if (espacio.getEstado() == EstadoEspacio.OCUPADO) {
             throw new IllegalStateException("No se puede eliminar un espacio ocupado.");
         }
+
+        // Evento de auditoría antes de eliminar
+        emitEvent("DELETE", espacio, Map.of(
+                "estado", "eliminado",
+                "zona", espacio.getZona().getNombre()
+        ), null, null);
 
         espacio.setActivo(false);
         espacio.setFechaActualizacion(LocalDateTime.now());
@@ -130,7 +201,6 @@ public class ServicioEspacio implements EspacioServicio {
     @Transactional(readOnly = true)
     public List<EspacioResponseDto> obtenerEspaciosPorZonaYEstado(UUID idZona, EstadoEspacio estado) {
         Zona zona = buscarZonaPorId(idZona);
-
         return espacioRepositorio.findByZonaAndEstado(zona, estado)
                 .stream()
                 .map(this::mapearResponse)
@@ -141,13 +211,11 @@ public class ServicioEspacio implements EspacioServicio {
     @Transactional(readOnly = true)
     public Map<String, Long> obtenerEspaciosPorEstadoAgrupadosPorZona(EstadoEspacio estado) {
         List<Object[]> resultados = espacioRepositorio.findEspaciosPorEstadoAgrupadosPorZona(estado);
-
         Map<String, Long> mapa = new LinkedHashMap<>();
 
         for (Object[] fila : resultados) {
             Zona zona = (Zona) fila[0];
             Long cantidad = (Long) fila[1];
-
             mapa.put(zona.getNombre(), cantidad);
         }
 
@@ -175,7 +243,15 @@ public class ServicioEspacio implements EspacioServicio {
         espacio.setEstado(nuevoEstado);
         espacio.setFechaActualizacion(LocalDateTime.now());
 
-        return mapearResponse(espacioRepositorio.save(espacio));
+        Espacio actualizado = espacioRepositorio.save(espacio);
+
+        // Evento de auditoría
+        emitEvent("CHANGE_STATE", actualizado, Map.of(
+                "estadoAnterior", estadoActual.name(),
+                "nuevoEstado", nuevoEstado.name()
+        ), null, null);
+
+        return mapearResponse(actualizado);
     }
 
     private void validarCambioEstado(EstadoEspacio actual, EstadoEspacio nuevo) {

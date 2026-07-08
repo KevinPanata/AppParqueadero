@@ -17,6 +17,15 @@ spring:
         dialect: org.hibernate.dialect.MySQLDialect
         format_sql: true
 
+    # Configuración de RabbitMQ
+    rabbitmq:
+      host: ${RABBITMQ_HOST:localhost}
+      port: ${RABBITMQ_PORT:5672}
+      username: ${RABBITMQ_USER:admin}
+      password: ${RABBITMQ_PASSWORD:admin123}
+      exchange: ${RABBITMQ_EXCHANGE:exchange_audit}
+      routing-key: ${RABBITMQ_ROUTING_KEY:routing_audit}
+
 server:
   port: 8081
 
