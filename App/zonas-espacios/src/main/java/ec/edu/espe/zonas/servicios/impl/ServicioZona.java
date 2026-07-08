@@ -1,5 +1,6 @@
 package ec.edu.espe.zonas.servicios.impl;
 
+import ec.edu.espe.zonas.dto.AuditEvent;
 import ec.edu.espe.zonas.dto.ZonaRequestDTO;
 import ec.edu.espe.zonas.entidades.EstadoEspacio;
 import ec.edu.espe.zonas.entidades.EstadoZona;
@@ -8,27 +9,67 @@ import ec.edu.espe.zonas.repositorios.EspacioRepositorio;
 import ec.edu.espe.zonas.repositorios.ZonaRepositorio;
 import ec.edu.espe.zonas.response.ZonaResponseDto;
 import ec.edu.espe.zonas.servicios.interfaz.ZonaServicio;
+import ec.edu.espe.zonas.servicios.impl.EventPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
 @Service
 @Transactional
 @RequiredArgsConstructor
 public class ServicioZona implements ZonaServicio {
     private final ZonaRepositorio zonaRepositorio;
     private final EspacioRepositorio espacioRepositorio;
+    private final EventPublisher eventPublisher;
+
+    // Método auxiliar para emitir eventos
+    private void emitEvent(String accion, Zona zona, Map<String, Object> datosExtra, String usuario, String ip) {
+        AuditEvent event = AuditEvent.builder()
+                .servicio("ms-zonas-espacios")
+                .accion(accion)
+                .entidad("Zona")
+                .entidadId(zona.getId().toString())
+                .datos(Map.of(
+                        "zona", Map.of(
+                                "id", zona.getId(),
+                                "nombre", zona.getNombre(),
+                                "codigo", zona.getCodigo(),
+                                "capacidad", zona.getCapacidad(),
+                                "estado", zona.getEstado().name()
+                        ),
+                        "extra", datosExtra != null ? datosExtra : Map.of()
+                ))
+                .usuario(usuario != null ? usuario : "sistema")
+                .ip(ip != null ? ip : "0.0.0.0")
+                .build();
+
+        eventPublisher.publishEvent(event);
+    }
 
     @Override
     @Transactional(readOnly = true)
     public List<ZonaResponseDto> listarZonas() {
-        return zonaRepositorio.findByActivoTrue()
-                .stream()
+        List<Zona> zonas = zonaRepositorio.findByActivoTrue();
+
+        //  Evento de auditoría
+        if (!zonas.isEmpty()) {
+            AuditEvent event = AuditEvent.builder()
+                    .servicio("ms-zonas-espacios")
+                    .accion("READ_ALL")
+                    .entidad("Zona")
+                    .datos(Map.of("cantidad", zonas.size()))
+                    .usuario("sistema")
+                    .ip("0.0.0.0")
+                    .build();
+            eventPublisher.publishEvent(event);
+        }
+
+        return zonas.stream()
                 .map(this::mapearAResponse)
                 .collect(Collectors.toList());
     }
@@ -39,10 +80,9 @@ public class ServicioZona implements ZonaServicio {
             throw new RuntimeException("Ya existe una zona con el nombre: " + requestDto.getNombre());
         }
 
-        // Generar código automático: ZON-[TIPO]-[número secuencial 2 dígitos]
-        // Ejemplo: ZON-VIP-01
         int totalZonas = (int) zonaRepositorio.count();
         String codigoGenerado = generarCodigoZona(requestDto.getTipo().name());
+
         Zona zona = Zona.builder()
                 .nombre(requestDto.getNombre())
                 .codigo(codigoGenerado)
@@ -56,6 +96,10 @@ public class ServicioZona implements ZonaServicio {
                 .build();
 
         Zona guardada = zonaRepositorio.save(zona);
+
+        //  Evento de auditoría
+        emitEvent("CREATE", guardada, null, null, null);
+
         return mapearAResponse(guardada);
     }
 
@@ -64,6 +108,14 @@ public class ServicioZona implements ZonaServicio {
     public ZonaResponseDto actualizar(UUID id, ZonaRequestDTO requestDto) {
         Zona zona = zonaRepositorio.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Zona no encontrada con id: " + id));
+
+        // Guardar estado anterior
+        Map<String, Object> estadoAnterior = Map.of(
+                "nombre", zona.getNombre(),
+                "descripcion", zona.getDescripcion(),
+                "capacidad", zona.getCapacidad(),
+                "tipo", zona.getTipo().name()
+        );
 
         String nombre = requestDto.getNombre().trim().toUpperCase();
 
@@ -86,6 +138,18 @@ public class ServicioZona implements ZonaServicio {
         zona.setFechaActualizacion(LocalDateTime.now());
 
         Zona actualizada = zonaRepositorio.save(zona);
+
+        //  Evento de auditoría
+        emitEvent("UPDATE", actualizada, Map.of(
+                "cambios", Map.of(
+                        "nuevoNombre", nombre,
+                        "nuevaDescripcion", requestDto.getDescripcion(),
+                        "nuevaCapacidad", requestDto.getCapacidad(),
+                        "nuevoTipo", requestDto.getTipo().name()
+                ),
+                "estadoAnterior", estadoAnterior
+        ), null, null);
+
         return mapearAResponse(actualizada);
     }
 
@@ -100,6 +164,12 @@ public class ServicioZona implements ZonaServicio {
         if (tieneEspaciosOcupados) {
             throw new IllegalStateException("No se puede eliminar la zona porque tiene espacios ocupados.");
         }
+
+        //  Evento de auditoría
+        emitEvent("DELETE", zona, Map.of(
+                "razon", "Eliminación lógica",
+                "espaciosActivos", espacioRepositorio.countByZonaAndActivoTrue(zona)
+        ), null, null);
 
         zona.setActivo(false);
         zona.setFechaActualizacion(LocalDateTime.now());
