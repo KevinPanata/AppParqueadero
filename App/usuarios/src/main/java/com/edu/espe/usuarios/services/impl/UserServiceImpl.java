@@ -13,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import com.edu.espe.usuarios.messaging.AuditProducerService;
+import java.util.Map;
 
 import java.text.Normalizer;
 import java.util.List;
@@ -28,6 +30,7 @@ public class UserServiceImpl implements UserService {
     private final RoleRepository roleRepository;
     private final UserRoleRepository userRoleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AuditProducerService auditProducer;
 
     @Override
     public UserResponse createUser(UserCreateRequest request) {
@@ -72,6 +75,14 @@ public class UserServiceImpl implements UserService {
                 .build();
 
         user = userRepository.save(user);
+
+        // 🔴 DISPARAR AUDITORÍA
+        auditProducer.enviarEventoAuditoria(
+                "CREATE",
+                "USUARIO",
+                Map.of("email", person.getEmail(), "dni", person.getDni(), "username", user.getUsername()),
+                user.getId() // Pasamos el UUID del usuario recién creado
+        );
 
         return mapToUserResponse(user);
     }
@@ -127,6 +138,17 @@ public class UserServiceImpl implements UserService {
 
         UserRole savedUserRole = userRoleRepository.save(userRole);
         user.getUserRoles().add(savedUserRole);
+
+        // 🔴 DISPARAR AUDITORÍA (ACTUALIZAR: ASIGNAR ROL)
+        auditProducer.enviarEventoAuditoria(
+                "UPDATE",
+                "USUARIO-ROL", 
+                Map.of(
+                    "usuario", user.getUsername(), 
+                    "rolAsignado", role.getName()
+                ),
+                user.getId() 
+        );
 
         return mapToUserResponse(user);
     }

@@ -8,6 +8,8 @@ import com.edu.espe.usuarios.services.RoleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.edu.espe.usuarios.messaging.AuditProducerService;
+import java.util.Map;
 
 import java.util.List;
 import java.util.UUID;
@@ -18,6 +20,8 @@ import java.util.UUID;
 public class RoleServiceImpl implements RoleService {
 
     private final RoleRepository roleRepository;
+    private final AuditProducerService auditProducer;
+
 
     @Override
     public RoleResponse createRole(RoleCreateRequest request) {
@@ -35,6 +39,14 @@ public class RoleServiceImpl implements RoleService {
                 .build();
 
         role = roleRepository.save(role);
+
+        // 🔴 DISPARAR AUDITORÍA
+        auditProducer.enviarEventoAuditoria(
+                "CREATE", 
+                "ROL", 
+                Map.of("nombre", role.getName(), "descripcion", role.getDescription() != null ? role.getDescription() : ""), 
+                null // No tenemos UUID del usuario creador en este contexto
+        );
 
         return mapToResponse(role);
     }
