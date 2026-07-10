@@ -1,0 +1,22 @@
+body {
+    background-color: #0f172a;
+}
+
+.bg-card {
+    background-color: #1e2937;
+    border: 1px solid #334155;
+    transition: all 0.3s ease;
+}
+
+.bg-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+    border-color: #475569;
+}
+
+/* Estados de Espacios */
+.bg-disponible    { background-color: #14532d; border-left: 6px solid #22c55e; }
+.bg-ocupado       { background-color: #431407; border-left: 6px solid #ef4444; }
+.bg-reservado     { background-color: #451a03; border-left: 6px solid #f59e0b; }
+.bg-mantenimiento { background-color: #312e81; border-left: 6px solid #6366f1; }
+.bg-inactivo      { background-color: #1e2937; border-left: 6px solid #64748b; opacity: 0.6; }
