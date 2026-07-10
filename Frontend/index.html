@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard - Estacionamiento</title>
+    <!-- Tailwind CSS vía CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <!-- Estilos adicionales -->
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="bg-gray-100 p-6 font-sans antialiased">
+
+    <div class="max-w-7xl mx-auto">
+        <!-- Encabezado -->
+        <header class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800">
+                    🅿️ Dashboard de Estacionamiento
+                </h1>
+                <p class="text-sm text-gray-500 mt-1">
+                    <span id="vistaActual">Espacios</span> en tiempo real
+                </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-4">
+                <!-- Botón para cambiar entre Espacios y Zonas -->
+                <button onclick="cambiarVista()" 
+                        class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 shadow-md hover:shadow-lg">
+                    <i class="fas fa-exchange-alt"></i>
+                    <span id="btnCambiarVista">Ver Zonas</span>
+                </button>
+
+                <div class="flex items-center gap-2 bg-white px-4 py-2 rounded-lg shadow-sm">
+                    <i class="fas fa-<?php echo $icono; ?> text-blue-500"></i>
+                    <span id="totalElementos" class="text-sm font-semibold text-gray-700">Cargando...</span>
+                </div>
+                <div class="flex items-center gap-2 bg-white px-4 py-2 rounded-lg shadow-sm">
+                    <span class="flex items-center gap-2 text-sm">
+                        <span class="w-3 h-3 bg-green-500 rounded-full inline-block animate-pulse" id="indicator"></span>
+                        <span id="statusText" class="text-gray-700">Conectado</span>
+                    </span>
+                </div>
+                <button onclick="cargarDatos()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2">
+                    <i class="fas fa-sync-alt"></i>
+                    Actualizar
+                </button>
+            </div>
+        </header>
+
+        <!-- Filtros (solo para espacios) -->
+        <div id="filtrosContainer" class="flex flex-wrap gap-2 mb-6">
+            <button class="filtro-btn active" data-filtro="todos" onclick="filtrarEspacios('todos')">
+                <i class="fas fa-th-large"></i> Todos
+            </button>
+            <button class="filtro-btn" data-filtro="disponible" onclick="filtrarEspacios('disponible')">
+                <i class="fas fa-check-circle text-green-500"></i> Disponibles
+            </button>
+            <button class="filtro-btn" data-filtro="ocupado" onclick="filtrarEspacios('ocupado')">
+                <i class="fas fa-times-circle text-red-500"></i> Ocupados
+            </button>
+            <button class="filtro-btn" data-filtro="reservado" onclick="filtrarEspacios('reservado')">
+                <i class="fas fa-clock text-yellow-500"></i> Reservados
+            </button>
+            <button class="filtro-btn" data-filtro="mantenimiento" onclick="filtrarEspacios('mantenimiento')">
+                <i class="fas fa-tools text-gray-500"></i> Mantenimiento
+            </button>
+        </div>
+
+        <!-- Estadísticas -->
+        <div id="estadisticas" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow-sm p-4 text-center">
+                <div class="text-2xl font-bold text-gray-700" id="totalCount">0</div>
+                <div class="text-xs text-gray-500">Total</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-4 text-center border-l-4 border-green-500">
+                <div class="text-2xl font-bold text-green-600" id="disponibleCount">0</div>
+                <div class="text-xs text-gray-500">Disponibles</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-4 text-center border-l-4 border-red-500">
+                <div class="text-2xl font-bold text-red-600" id="ocupadoCount">0</div>
+                <div class="text-xs text-gray-500">Ocupados</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-4 text-center border-l-4 border-yellow-500">
+                <div class="text-2xl font-bold text-yellow-600" id="reservadoCount">0</div>
+                <div class="text-xs text-gray-500">Reservados</div>
+            </div>
+        </div>
+
+        <!-- Contenedor de tarjetas (grid) -->
+        <div id="contenedorPrincipal" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            <!-- Las tarjetas se inyectan dinámicamente desde app.js -->
+        </div>
+
+        <!-- Pie de página -->
+        <footer class="mt-8 text-sm text-gray-500 text-center border-t pt-4">
+            <div class="flex flex-col sm:flex-row justify-center gap-4">
+                <span>Última actualización: <span id="lastUpdate" class="font-medium">--</span></span>
+                <span>|</span>
+                <span>SSE: <span id="sseStatus" class="font-medium text-green-600">Conectado</span></span>
+                <span>|</span>
+                <span>Vista: <span id="vistaFooter" class="font-medium">Espacios</span></span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Nuestro JavaScript -->
+    <script src="app.js"></script>
+</body>
+</html>

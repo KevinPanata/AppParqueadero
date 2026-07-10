@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+// src/tickets/tickets.service.ts
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
@@ -6,16 +7,41 @@ import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { Ticket } from './entities/ticket.entity';
 import { HttpClientService } from './common/http-client.service';
-import { Vehiculo } from './interfaces/vehiculo.interface';
-import { Espacio } from './interfaces/espacio.interface';
-import { Usuario } from './interfaces/usuario.interface';
-import { EventPublisher } from './common/event-publisher.service';
+import { EventPublisher, AuditEvent } from './common/event-publisher.service';
+import { SseService } from '../sse/sse.service';
 
 export interface AuditContext {
   usuario?: string;
   idPersona?: string;
   ip: string;
   mac: string;
+}
+
+export interface Usuario {
+  id: string;
+  username: string;
+  person: {
+    dni: string;
+    firstName: string;
+    lastName: string;
+  };
+}
+
+export interface Vehiculo {
+  id: string;
+  placa: string;
+  marca: string;
+  modelo: string;
+  color: string;
+  tipo: string;
+}
+
+export interface Espacio {
+  id: string;
+  idZona: string;
+  nombreZona: string;
+  estado: 'DISPONIBLE' | 'OCUPADO' | 'MANTENIMIENTO';
+  activo: boolean;
 }
 
 @Injectable()
@@ -32,10 +58,11 @@ export class TicketsService {
     private readonly httpClient: HttpClientService,
     private readonly configService: ConfigService,
     private readonly eventPublisher: EventPublisher,
+    private readonly sseService: SseService,
   ) {
-    this.usuariosUrl = this.configService.get<string>('USUARIOS_URL')!;
-    this.espacioUrl = this.configService.get<string>('ZONAS_URL')!;
-    this.vehiculoUrl = this.configService.get<string>('VEHICULOS_URL')!;
+    this.usuariosUrl = this.configService.get<string>('USUARIOS_URL', 'http://localhost:8082/api/users');
+    this.espacioUrl = this.configService.get<string>('ZONAS_URL', 'http://localhost:8081/api/espacios');
+    this.vehiculoUrl = this.configService.get<string>('VEHICULOS_URL', 'http://localhost:8083/vehiculos');
     this.tarifaPorHora = Number(
       this.configService.get<string>('TARIFA_POR_HORA', '1.5'),
     );
@@ -47,14 +74,11 @@ export class TicketsService {
     auditContext: AuditContext,
     datosExtra?: Record<string, unknown>,
   ): Promise<void> {
-    await this.eventPublisher.publish({
+    const event: AuditEvent = {
       servicio: 'ms-tickets',
       accion,
-      entidad: 'TICKET',
-      usuario: auditContext.usuario,
-      idPersona: auditContext.idPersona,
-      ip: auditContext.ip,
-      mac: auditContext.mac,
+      entidad: 'Ticket',
+      entidadId: ticket.id,
       datos: {
         idTicket: ticket.id,
         placa: ticket.placa,
@@ -68,7 +92,12 @@ export class TicketsService {
         valorRecaudado: ticket.valorRecaudado,
         ...(datosExtra ?? {}),
       },
-    });
+      usuario: auditContext?.usuario || 'sistema',
+      ip: auditContext?.ip || '0.0.0.0',
+      mac: auditContext?.mac || '00:00:00:00:00:00',
+    };
+
+    await this.eventPublisher.publishEvent(event);
   }
 
   async create(
@@ -79,34 +108,34 @@ export class TicketsService {
     const placa = dto.placa.trim().toUpperCase();
     const dni = dto.dni.trim();
 
+    // Validar usuario por DNI
     const usuario = await this.validarUsuarioPorDni(dni, token);
-
     if (!usuario) {
       throw new BadRequestException(`No se encontró un usuario con DNI ${dni}`);
     }
 
+    // Validar vehículo por placa
     const vehiculo = await this.validarPlaca(placa, token);
-
     if (!vehiculo) {
-      throw new BadRequestException(
-        `No se encontró un vehículo con placa ${placa}`,
-      );
+      throw new BadRequestException(`No se encontró un vehículo con placa ${placa}`);
     }
 
+    // Validar espacio disponible
     const espacio = await this.validarEspacioDisponible(
       dto.idEspacio,
       dto.idZona,
       token,
     );
-
     if (!espacio) {
       throw new BadRequestException(
         `El espacio ${dto.idEspacio} no está disponible en la zona ${dto.idZona}`,
       );
     }
 
+    // Validar que no haya ticket activo para esta placa
     await this.validarTicketActivo(placa);
 
+    // Crear ticket
     const ticket = this.ticketRepository.create({
       placa,
       dni,
@@ -120,8 +149,10 @@ export class TicketsService {
 
     const ticketGuardado = await this.ticketRepository.save(ticket);
 
+    // Cambiar estado del espacio
     await this.cambiarEstadoEspacio(espacio.id, 'OCUPADO', token);
 
+    // Emitir eventos
     await this.emitEvent('CREATE', ticketGuardado, auditContext, {
       mensaje: 'Ticket creado correctamente',
       usuarioValidado: {
@@ -144,6 +175,10 @@ export class TicketsService {
       },
     });
 
+    // Emitir SSE
+    this.sseService.emitTicketCreated(ticketGuardado);
+    this.sseService.emitSpaceStatusChanged(espacio.id, 'OCUPADO');
+
     return ticketGuardado;
   }
 
@@ -152,18 +187,17 @@ export class TicketsService {
       order: { fechaHoraIngreso: 'DESC' },
     });
 
-    await this.eventPublisher.publish({
+    await this.eventPublisher.publishEvent({
       servicio: 'ms-tickets',
-      accion: 'SELECT',
-      entidad: 'TICKET',
-      usuario: auditContext.usuario,
-      idPersona: auditContext.idPersona,
-      ip: auditContext.ip,
-      mac: auditContext.mac,
+      accion: 'READ_ALL',
+      entidad: 'Ticket',
       datos: {
         mensaje: 'Consulta general de tickets',
         cantidadRegistros: tickets.length,
       },
+      usuario: auditContext?.usuario || 'sistema',
+      ip: auditContext?.ip || '0.0.0.0',
+      mac: auditContext?.mac || '00:00:00:00:00:00',
     });
 
     return tickets;
@@ -175,18 +209,17 @@ export class TicketsService {
       order: { fechaHoraIngreso: 'DESC' },
     });
 
-    await this.eventPublisher.publish({
+    await this.eventPublisher.publishEvent({
       servicio: 'ms-tickets',
-      accion: 'SELECT',
-      entidad: 'TICKET',
-      usuario: auditContext.usuario,
-      idPersona: auditContext.idPersona,
-      ip: auditContext.ip,
-      mac: auditContext.mac,
+      accion: 'READ_ACTIVE',
+      entidad: 'Ticket',
       datos: {
         mensaje: 'Consulta de tickets activos',
         cantidadRegistros: tickets.length,
       },
+      usuario: auditContext?.usuario || 'sistema',
+      ip: auditContext?.ip || '0.0.0.0',
+      mac: auditContext?.mac || '00:00:00:00:00:00',
     });
 
     return tickets;
@@ -196,11 +229,11 @@ export class TicketsService {
     const ticket = await this.ticketRepository.findOne({ where: { id } });
 
     if (!ticket) {
-      throw new BadRequestException(`No se encontró un ticket con ID ${id}`);
+      throw new NotFoundException(`No se encontró un ticket con ID ${id}`);
     }
 
     if (auditContext) {
-      await this.emitEvent('SELECT', ticket, auditContext, {
+      await this.emitEvent('READ', ticket, auditContext, {
         mensaje: 'Consulta de ticket por ID',
         idConsultado: id,
       });
@@ -229,13 +262,15 @@ export class TicketsService {
     ticket.fechaHoraSalida = fechaSalida;
     ticket.valorRecaudado = dto.valorRecaudado ?? costo;
 
+    // Cambiar estado del espacio a disponible
     await this.cambiarEstadoEspacio(ticket.idEspacio, 'DISPONIBLE', token);
 
     const ticketCerrado = await this.ticketRepository.save(ticket);
 
+    // Emitir eventos
     await this.emitEvent('UPDATE', ticketCerrado, auditContext, {
       mensaje: 'Ticket cerrado correctamente',
-      accionRealizada: 'CIERRE_TICKET',
+      accionRealizada: 'CLOSE_TICKET',
       tiempoHoras: horas,
       tarifaPorHora: this.tarifaPorHora,
       costoCalculado: costo,
@@ -247,10 +282,15 @@ export class TicketsService {
       },
     });
 
+    // Emitir SSE
+    this.sseService.emitTicketUpdated(ticketCerrado);
+    this.sseService.emitTicketStatusChanged(ticketCerrado, 'ACTIVO', 'CERRADO');
+    this.sseService.emitSpaceStatusChanged(ticket.idEspacio, 'DISPONIBLE');
+
     return ticketCerrado;
   }
 
-  async remove(id: string, auditContext: AuditContext): Promise<void> {
+  async remove(id: string, auditContext: AuditContext): Promise<{ message: string }> {
     const ticket = await this.findOne(id);
 
     if (ticket.activo) {
@@ -262,7 +302,14 @@ export class TicketsService {
     await this.emitEvent('DELETE', ticket, auditContext, {
       mensaje: 'Ticket eliminado correctamente',
     });
+
+    // Emitir SSE
+    this.sseService.emitTicketDeleted(id);
+
+    return { message: `Ticket ${id} eliminado correctamente` };
   }
+
+  // ===== MÉTODOS PRIVADOS =====
 
   private async validarUsuarioPorDni(
     dni: string,
@@ -317,18 +364,21 @@ export class TicketsService {
 
   private async cambiarEstadoEspacio(
     idEspacio: string,
-    nuevoEstado: 'DISPONIBLE' | 'OCUPADO',
+    nuevoEstado: 'DISPONIBLE' | 'OCUPADO' | 'MANTENIMIENTO',
     token: string,
   ): Promise<void> {
-    const url = `${this.espacioUrl}/${idEspacio}/estado`;
-
-    await this.httpClient.patch<void>(
-      url,
-      {
-        nuevoEstado,
-      },
-      token,
-    );
+    try {
+      const url = `${this.espacioUrl}/${idEspacio}/estado`;
+      await this.httpClient.patch<void>(
+        url,
+        { nuevoEstado },
+        token,
+      );
+      this.logger.log(`✅ Estado del espacio ${idEspacio} cambiado a ${nuevoEstado}`);
+    } catch (error) {
+      this.logger.error(`Error al cambiar estado del espacio: ${error}`);
+      throw new BadRequestException('Error al actualizar el estado del espacio');
+    }
   }
 
   private async validarTicketActivo(placa: string): Promise<void> {

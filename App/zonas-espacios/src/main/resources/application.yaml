@@ -3,7 +3,8 @@ spring:
     name: zonas-espacios
 
   datasource:
-    url: jdbc:mysql://mysql-db:3306/zonas_espacios?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    # Cambiamos a localhost y puerto 3307 para que IntelliJ pueda conectarse desde afuera
+    url: jdbc:mysql://localhost:3307/zonas_espacios?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
     username: root
     password: "123"
     driver-class-name: com.mysql.cj.jdbc.Driver
