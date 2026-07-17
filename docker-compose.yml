@@ -1,0 +1,165 @@
+version: '3.9'
+
+services:
+  # ---------------- 1. INFRAESTRUCTURA ----------------
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"   # Puerto de mensajería
+      - "15672:15672" # Interfaz visual (Web de administración)
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+    networks:
+      - red_microservicios
+
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: postgres-db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Admin123
+      POSTGRES_DB: usuarios_db
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - red_microservicios
+
+  # ---------------- 2. MICROSERVICIOS SPRING BOOT ----------------
+  usuarios:
+    build: ./usuarios
+    container_name: ms-usuarios
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=postgres-db
+      - RABBITMQ_HOST=rabbitmq
+    depends_on:
+      - postgres-db
+      - rabbitmq
+    networks:
+      - red_microservicios
+
+  zonas-espacios:
+    build: ./zonas-espacios
+    container_name: ms-zonas-espacios
+    ports:
+      - "8081:8081"
+    environment:
+      - spring.datasource.url=jdbc:postgresql://postgres-db:5432/zonasbd
+      - RABBITMQ_HOST=rabbitmq
+    depends_on:
+      - postgres-db
+      - rabbitmq
+    networks:
+      - red_microservicios
+
+  # ---------------- 3. MICROSERVICIOS NESTJS ----------------
+  vehiqlos:
+    build: ./vehiqlos
+    container_name: ms-vehiqlos
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=postgres-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=Admin123
+      - DB_NAME=vehiqlosdb
+      - RABBITMQ_HOST=rabbitmq
+      # 👇 Agregados para RabbitMQ
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=admin
+      - RABBITMQ_PASSWORD=admin123
+      - RABBITMQ_EXCHANGE=exchange_audit
+      - RABBITMQ_ROUTING_KEY=routing_audit
+      - MS_PERSONAS=http://usuarios:8080/api/personas
+      - MS_ZONAS=http://zonas-espacios:8081/api/zonas
+      - PORT=3000
+    depends_on:
+      - postgres-db
+      - rabbitmq
+      - usuarios
+      - zonas-espacios
+    networks:
+      - red_microservicios
+
+  tickets:
+    build: ./tickets
+    container_name: ms-tickets
+    ports:
+      - "3001:3001"
+    environment:
+      - DB_HOST=postgres-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=Admin123
+      - DB_NAME=ticketsdb
+      - RABBITMQ_HOST=rabbitmq
+      # 👇 Agregados para RabbitMQ
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=admin
+      - RABBITMQ_PASSWORD=admin123
+      - RABBITMQ_EXCHANGE=exchange_audit
+      - RABBITMQ_ROUTING_KEY=routing_audit
+      - MS_PERSONA=http://usuarios:8080/api/users
+      - MS_ESPACIOS=http://zonas-espacios:8081/api/espacios
+      - MS_VEHICULOS=http://vehiqlos:3000/vehiqlos
+      - PORT=3001
+      - JWT_SECRET=SecretKeyForJWTAuthenticationWhichIsVeryLongAndSecureEnoughToSatisfyHMACSHA256
+    depends_on:
+      - postgres-db
+      - rabbitmq
+      - usuarios
+      - zonas-espacios
+      - vehiqlos
+    networks:
+      - red_microservicios
+
+  ms-audit:
+    build: ./ms-audit
+    container_name: ms-audit
+    ports:
+      - "3004:3004"
+    environment:
+      - DB_HOST=postgres-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=Admin123
+      - DB_NAME=db_audit
+      - PORT=3004
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=admin
+      - RABBITMQ_PASSWORD=admin123
+      - RABBITMQ_EXCHANGE=exchange_audit
+      - RABBITMQ_QUEUE=queue_audit
+      - RABBITMQ_ROUTING_KEY=routing_audit
+      - THROTTLE_TTL=60
+      - THROTTLE_LIMIT=10
+    depends_on:
+      - postgres-db
+      - rabbitmq
+    networks:
+      - red_microservicios
+
+  monitoreo:
+    build: ./monitoreo
+    container_name: ms-monitoreo
+    ports:
+      - "3003:80"
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+    depends_on:
+      - rabbitmq
+    networks:
+      - red_microservicios
+
+networks:
+  red_microservicios:
+    driver: bridge

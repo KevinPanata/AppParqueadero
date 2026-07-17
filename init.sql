@@ -1,0 +1,4 @@
+CREATE DATABASE db_audit;
+CREATE DATABASE ticketsdb;
+CREATE DATABASE vehiqlosdb;
+CREATE DATABASE zonasbd;
