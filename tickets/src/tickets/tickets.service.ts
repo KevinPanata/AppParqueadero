@@ -7,6 +7,7 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { EventPublisher } from '../common/event-publisher.service';
 import { SseService } from '../sse/sse.service';
+import { CacheService } from '../cache/cache.service';
 
 @Injectable()
 export class TicketsService {
@@ -22,6 +23,7 @@ export class TicketsService {
     private readonly sseService: SseService,
     private readonly configService: ConfigService,
     private readonly eventPublisher: EventPublisher,
+    private readonly cacheService: CacheService,
   ) {
     this.personaUrl = this.configService.get<string>('MS_PERSONA') || 'http://localhost:8080/api/users';
     this.espacioUrl = this.configService.get<string>('MS_ESPACIOS') || 'http://localhost:8081/api/espacios';
@@ -34,12 +36,20 @@ export class TicketsService {
 
     // 1. Verificar Espacio en zonas-espacios
     let espacioData: any;
-    try {
-      const res = await fetch(`${this.espacioUrl}/${createTicketDto.idEspacio}`, { headers });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      espacioData = await res.json();
-    } catch (error: any) {
-      throw new NotFoundException(`El espacio con ID ${createTicketDto.idEspacio} no existe o no hay acceso: ${error.message}`);
+    const cacheKeyEspacio = `espacio:${createTicketDto.idEspacio}`;
+    const cachedEspacio = await this.cacheService.get<any>(cacheKeyEspacio);
+
+    if (cachedEspacio) {
+      espacioData = cachedEspacio;
+    } else {
+      try {
+        const res = await fetch(`${this.espacioUrl}/${createTicketDto.idEspacio}`, { headers });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        espacioData = await res.json();
+        await this.cacheService.set(cacheKeyEspacio, espacioData);
+      } catch (error: any) {
+        throw new NotFoundException(`El espacio con ID ${createTicketDto.idEspacio} no existe o no hay acceso: ${error.message}`);
+      }
     }
 
     if (espacioData.estado !== 'DISPONIBLE') {
@@ -48,13 +58,24 @@ export class TicketsService {
 
     // 2. Verificar Vehículo en vehiqlos
     let vehiculoExiste = false;
-    try {
-      const res = await fetch(this.vehiculosUrl, { headers });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const vehiculos: any[] = await res.json();
-      vehiculoExiste = vehiculos.some(v => v.placa === createTicketDto.placa);
-    } catch (error: any) {
-      throw new BadRequestException(`No se pudo conectar con el servicio de vehículos: ${error.message}`);
+    const cacheKeyVehiculo = `vehiculo:${createTicketDto.placa}`;
+    const cachedVehiculo = await this.cacheService.get<any>(cacheKeyVehiculo);
+
+    if (cachedVehiculo) {
+      vehiculoExiste = true;
+    } else {
+      try {
+        const res = await fetch(this.vehiculosUrl, { headers });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const vehiculos: any[] = await res.json();
+        const vehiculo = vehiculos.find(v => v.placa === createTicketDto.placa);
+        if (vehiculo) {
+          vehiculoExiste = true;
+          await this.cacheService.set(cacheKeyVehiculo, vehiculo);
+        }
+      } catch (error: any) {
+        throw new BadRequestException(`No se pudo conectar con el servicio de vehículos: ${error.message}`);
+      }
     }
 
     if (!vehiculoExiste) {
@@ -63,13 +84,24 @@ export class TicketsService {
 
     // 3. Verificar Usuario en usuarios (DNI)
     let usuarioExiste = false;
-    try {
-      const res = await fetch(this.personaUrl, { headers });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const usuarios: any[] = await res.json();
-      usuarioExiste = usuarios.some(u => u.person && u.person.dni === createTicketDto.dni);
-    } catch (error: any) {
-      throw new BadRequestException(`No se pudo conectar con el servicio de usuarios: ${error.message}`);
+    const cacheKeyPersona = `persona:${createTicketDto.dni}`;
+    const cachedPersona = await this.cacheService.get<any>(cacheKeyPersona);
+
+    if (cachedPersona) {
+      usuarioExiste = true;
+    } else {
+      try {
+        const res = await fetch(this.personaUrl, { headers });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const usuarios: any[] = await res.json();
+        const usuario = usuarios.find(u => u.person && u.person.dni === createTicketDto.dni);
+        if (usuario) {
+          usuarioExiste = true;
+          await this.cacheService.set(cacheKeyPersona, usuario);
+        }
+      } catch (error: any) {
+        throw new BadRequestException(`No se pudo conectar con el servicio de usuarios: ${error.message}`);
+      }
     }
 
     if (!usuarioExiste) {

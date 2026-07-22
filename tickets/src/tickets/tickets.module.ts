@@ -6,9 +6,10 @@ import { Ticket } from './entities/ticket.entity';
 import { HttpClientService } from './common/httpl-client.service';
 import { EventPublisher } from '../common/event-publisher.service';
 import { SseModule } from '../sse/sse.module';
+import { CacheModule } from '../cache/cache.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Ticket]), SseModule],
+  imports: [TypeOrmModule.forFeature([Ticket]), SseModule, CacheModule],
   controllers: [TicketsController],
   providers: [TicketsService, HttpClientService, EventPublisher],
 })

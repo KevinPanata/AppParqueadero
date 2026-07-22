@@ -2,6 +2,18 @@ version: '3.9'
 
 services:
   # ---------------- 1. INFRAESTRUCTURA ----------------
+  redis:
+    image: redis:7-alpine
+    container_name: redis-tickets
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - red_microservicios
+
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
@@ -110,6 +122,8 @@ services:
       - MS_PERSONA=http://usuarios:8080/api/users
       - MS_ESPACIOS=http://zonas-espacios:8081/api/espacios
       - MS_VEHICULOS=http://vehiqlos:3000/vehiqlos
+      - REDIS_HOST=redis-tickets
+      - REDIS_PORT=6379
       - PORT=3001
       - JWT_SECRET=SecretKeyForJWTAuthenticationWhichIsVeryLongAndSecureEnoughToSatisfyHMACSHA256
     depends_on:
@@ -163,3 +177,6 @@ services:
 networks:
   red_microservicios:
     driver: bridge
+
+volumes:
+  redis_data:
